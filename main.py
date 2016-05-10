@@ -11,6 +11,7 @@ GMAIL_PASSWORD = 'gunstand'
 BUTTON_1_PIN = 23
 BUTTON_2_PIN = 24
 BUTTON_3_PIN = 22
+BUTTON_GUN_PIN = 27
 
 modifier_map = [None]*30
 modifier_map[BUTTON_1_PIN] = 1
@@ -22,6 +23,8 @@ current_code = 0
 current_idx = 1
 correct_code = 111
 incorrect_count = 0
+gunState = 'on'
+state = 'locked'
 
 cfg_email = 'prestwoj@gmail.com'
 cfg_subject = 'Gun Stand Notification'
@@ -37,6 +40,8 @@ GPIO.setup(BUTTON_1_PIN, GPIO.IN, pull_up_down = GPIO.PUD_DOWN)
 GPIO.setup(BUTTON_2_PIN, GPIO.IN, pull_up_down = GPIO.PUD_DOWN)
 
 GPIO.setup(BUTTON_3_PIN, GPIO.IN, pull_up_down = GPIO.PUD_DOWN)
+
+GPIO.setup(BUTTON_GUN_PIN, GPIO.IN, pull_up_down = GPIO.PUD_DOWN)
 
 GPIO.setup(18, GPIO.OUT)
 
@@ -115,20 +120,51 @@ def reset():
     global modifier
     global current_idx
     global correct_code
+    global incorrect_count
+    global cfg_invalid_entry
+    global cfg_email
+    global state
 
     print("Reset!")
     print("Code entered = " + str(current_code))
     if current_code != correct_code:
         playError()
         incorrect_count += 1
-        if incorrect_count > cfg_invalid_entry:
+        if int(incorrect_count) >= int(cfg_invalid_entry):
+            print "Incorrect code entered 5 times, sending email notification"
             sendNotification(cfg_email, cfg_invalid_entry_message)
+            incorrect_count = 0
     else:
         playPass()
         incorrect_count = 0
+        if state == 'unlocked':
+            if gunState == 'off':
+                print "Gun must be on the table before locking the system"
+            else:
+                print "Changing state to locked, gun is " + gunState + " the table"               
+                state = 'locked'
+        elif state == 'locked':
+            print "Changing state to unlocked, gun is " + gunState + " the table"
+            state = 'unlocked'
     current_code = 0
     modifier = 100
     current_idx = 1
+
+def gunTriggered(channel):
+    global gunState
+    global state
+
+    if gunState == 'on':
+        print "Gun removed"
+        if state == 'locked':
+            playError()
+            sendNotification(cfg_email, "The gun was removed without passcode")
+        else:
+            print "Gun was removed correctly"
+        gunState = 'off'
+    elif gunState == 'off':
+        print "Gun placed"
+        gunState = 'on'
 
 # Add up the code presses to form the final code entry after 3 presses
 def buttonCallback(channel):
@@ -168,6 +204,10 @@ for i in config:
 GPIO.add_event_detect(BUTTON_1_PIN, GPIO.RISING, callback=buttonCallback, bouncetime=300)
 GPIO.add_event_detect(BUTTON_2_PIN, GPIO.RISING, callback=buttonCallback, bouncetime=300)
 GPIO.add_event_detect(BUTTON_3_PIN, GPIO.RISING, callback=buttonCallback, bouncetime=300)
+GPIO.add_event_detect(BUTTON_GUN_PIN, GPIO.RISING, callback=gunTriggered, bouncetime=300)
+
+print "Initial gun state = " + gunState
+print "Initial state = " + state
 
 while True:
     if done == True:
